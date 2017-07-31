@@ -1,140 +1,106 @@
 # -*- encoding:utf-8 -*-
-import tensorflow as tf 
-import tensorflow.contrib as tfc
-import tensorflow.contrib.layers as tfcl
-import pandas as pd 
-import numpy as np 
+import numpy as np
+import pandas as pd
+import lightgbm as lgb
+import gc
+import sys
 from datetime import datetime
 
-# remove scientific notation
-#np.set_printoptions(suppress=True)
+train_prob = 0.95
 
-#train_prob = 0.95
+print("Read train data")
+train_df = pd.read_csv("../data/num_all.pd",sep='\t').sample(frac=1).reset_index(drop=True)
 
+train_idx = int(train_df.shape[0]*train_prob)
 
-#train_idx = int(train_df.shape[0]*train_prob)
-
-#x_train = train_df.drop(['target'], axis=1).loc[:train_idx]
-#y_train = train_df.target.loc[:train_idx]
-#x_test = train_df.drop(['target'], axis=1).loc[train_idx:]
-#y_test = train_df.target.loc[train_idx:]
-#y_last = train_df['last'].loc[train_idx:]
-#y_log10 = train_df.log10.loc[train_idx:]
+x_train = train_df.drop(['target'], axis=1).loc[:train_idx]
+y_train = train_df.target.loc[:train_idx]
+x_test = train_df.drop(['target'], axis=1).loc[train_idx:]
+y_test = train_df.target.loc[train_idx:]
+y_last = train_df['last'].loc[train_idx:]
+y_log10 = train_df.log10.loc[train_idx:]
 # shape        
-#print('Shape train label: {}\nShape test label: {}\nShape test last: {}'.format(y_train.shape, y_test.shape, y_last.shape))
+print('Shape train: {}\nShape test: {}'.format(x_train.shape, x_test.shape))
+print('Shape train label: {}\nShape test label: {}\nShape test last: {}'.format(y_train.shape, y_test.shape, y_last.shape))
 
-#y_mean = np.mean(y_train)
+y_mean = np.mean(y_train)
 
-#split = int(x_train.shape[0]*0.95)
-#x_train, y_train, x_valid, y_valid = x_train[:split], y_train[:split], x_train[split:], y_train[split:]
-
-class network():
-    def __init__(self):
-        self.name = 'nn'
-
-    def __call__(self, z):
-        with tf.variable_scope(self.name) as vs:
-            g = tfcl.fully_connected(z, 150, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
-            #g = tfcl.fully_connected(g, 300, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
-            #g = tfcl.fully_connected(g, 600, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
-            g = tfcl.fully_connected(g, 200, activation_fn=tf.nn.tanh)
-            g = tfcl.fully_connected(g, 50, activation_fn=tf.nn.tanh, normalizer_fn=tfcl.batch_norm)
-            g = tfcl.fully_connected(g, 10, activation_fn=tf.nn.tanh, normalizer_fn=tfcl.batch_norm)
-            g = tfcl.fully_connected(g, 5, activation_fn=tf.nn.tanh, normalizer_fn=tfcl.batch_norm)
-            g = tfcl.fully_connected(g, 1, activation_fn=None)
-            return g
-
-    @property
-    def vars(self):
-        return [var for var in tf.global_variables() if self.name in var.name]
+split = int(x_train.shape[0]*0.95)
+x_train, y_train, x_valid, y_valid = x_train[:split], y_train[:split], x_train[split:], y_train[split:]
 
 
-class tfnn():
-    def __init__(self, network, data):
-        self.network = network
-        self.data = data
-        self.test_prob = 0.05
-
-        self.x = tf.placeholder(tf.float32,shape=[None,29])
-        self.y = tf.placeholder(tf.float32,shape=[None])
-        # nets
-        self._y = self.network(self.x)
-
-        # loss
-        #self.loss, _ = tf.metrics.mean_squared_error(self.y, self._y)
-        #self.loss = tf.reduce_mean(tf.reduce_mean(tf.square(self.y - self._y), axis=1), axis=0)
-        self.loss = tf.nn.l2_loss(self.y - self._y)
-
-        self.solver = tf.train.GradientDescentOptimizer(0.001).minimize(self.loss, var_list=self.network.vars)
-        #self.solver = tf.train.AdamOptimizer().minimize(self.loss, var_list=self.network.vars)
-
-        self.config = tf.ConfigProto()
-        self.config.gpu_options.allocator_type = 'BFC'
-        self.config.gpu_options.allow_growth=True
-
-        self.sess = tf.Session(config=self.config)
-        self.saver = tf.train.Saver()
-        self.result_path = '../result/nn_'
-
-    def train(self, epoches=30, batch_size=266):
-        self.sess.run(tf.global_variables_initializer())
-
-        for epoch in xrange(epoches):
-            train_df = self.data.sample(frac=1).reset_index(drop=True)
-            test_idx = int(train_df.shape[0]*self.test_prob)
-            test_idx = 1000 if test_idx>1000 else test_idx
-            x_train = np.asarray(train_df.drop(['target'], axis=1).loc[test_idx:])
-            y_train = np.asarray(train_df.target.loc[test_idx:])
-            x_test = np.asarray(train_df.drop(['target'], axis=1).loc[:test_idx])
-            y_test = np.asarray(train_df.target.loc[:test_idx])
-            batch_num = x_train.shape[0] // batch_size
-            for i in xrange(batch_num):
-                self.sess.run(self.solver,
-                                feed_dict={
-                                    self.x : x_train[i*batch_size:(i+1)*batch_size-10,],
-                                    self.y : y_train[i*batch_size:(i+1)*batch_size-10,]})
-                if i % 100 ==0:
-                    train_loss = self.sess.run(self.loss, 
-                                            feed_dict={
-                                                self.x : x_train[i*batch_size:(i+1)*batch_size-10,],
-                                                self.y : y_train[i*batch_size:(i+1)*batch_size-10,]})
-                    valid_loss = self.sess.run(self.loss, 
-                                            feed_dict={
-                                                self.x : x_train[i*batch_size+64:(i+1)*batch_size,],
-                                                self.y : y_train[i*batch_size+64:(i+1)*batch_size,]})
-                    print('Epoch: {}, Iter: {},\n\ttrain loss: {}, valid loss: {}'.format(epoch, i, train_loss, valid_loss))
-            
-            global_num = int(epoch*batch_num*batch_size+i*batch_size)
-            
-            self.saver.save(self.sess, '../model/test_{}.model'.format(global_num), global_step=global_num)
-
-            test_loss = self.sess.run(self.loss,
-                                    feed_dict={
-                                    self.x : x_test, self.y : y_test})
-
-            print('Test loss: {}'.format(test_loss))
-
-            prediction = self.sess.run(self._y,
-                                    feed_dict={
-                                    self.x : x_test})
-
-            if (epoch+1) % 5 == 0:
-                goods_id = x_test[:,0].astype(np.int64)
-                channel_id = x_test[:,1].astype(np.int64)
-                name = self.result_path+datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+str(int(test_loss*10000))+'.result'
-                print('Save result as: '+name)
-                with open(name,'aw') as f:
-                    for j in xrange(len(y_test)):
-                        f.write(str(goods_id[j])+','+str(channel_id[j])+','+str(prediction[j][0])+','+str(y_test[j])+'\n')
+d_train = lgb.Dataset(x_train, label=y_train)
+d_valid = lgb.Dataset(x_valid, label=y_valid)
 
 
-if __name__=='__main__':
-    print("Read train data")
-    train_df = pd.read_csv("../data/num_all.pd",sep='\t').sample(frac=1).reset_index(drop=True)
+params = {}
+params['learning_rate'] = 0.05
+params['boosting_type'] = 'gbdt'
+params['objective'] = 'regression'
+params['metric'] = 'mae'
+params['sub_feature'] = 0.9
+params['num_leaves'] = 128
+params['is_unbalance'] = 'true'
+params['min_data'] = 100
+params['min_hessian'] = 1
+params['early_stopping_round'] = 100
 
-    print('Shape data: {}'.format(train_df.shape))
+#params['bagging_freq'] = 50
+#params['bagging_fraction'] = 0.8
 
-    net = network()
+print("Start training")
+watchlist = [d_valid]
+clf = lgb.train(params,d_train,2500,watchlist)
+# clf2 = lgb.Booster(model_file='test.model')
 
-    model = tfnn(net, train_df)
-    model.train()
+print("Make prediction")
+#clf.reset_parameter({"num_threads":4})
+p_test = clf.predict(x_test)
+
+print("Start correction")
+if p_test.shape[0]!=y_test.shape[0]:
+    print("WARNING!!!\nThe prediction should match real label")
+    sys.exit()
+
+#if p_test[i] > 50 and abs(p_test[i]-y_test[i])>y_test[i]*1:
+
+k = 0
+'''
+for i in xrange(p_test.shape[0]):
+    multi = 1 if y_log10.iloc[i]<2.7 else 2.7/y_log10.iloc[i] # log10(500)=2.7
+    if abs(p_test[i]-y_test.iloc[i])>abs(y_test.iloc[i])*multi:
+        k += 1
+        p_test[i] = (p_test[i]+y_last.iloc[i])/2 + 0.1*np.random.random()-0.05
+
+for i in xrange(p_test.shape[0]):
+    multi = 1 if y_log10.iloc[i]<2.7 else 2.7/y_log10.iloc[i] # log10(500)=2.7
+    times = abs(p_test[i]-y_test.iloc[i])/abs(y_test.iloc[i]+1e-20)
+    if times > multi:
+        k += 1
+        p_test[i] = (p_test[i]+y_last.iloc[i]*times)/(times+1) + 0.1*np.random.random()-0.05
+
+for i in xrange(p_test.shape[0]):
+    k += 1
+    times = abs(p_test[i]-y_last.iloc[i])/abs(y_last.iloc[i]+1e-20)
+    p_test[i] = (p_test[i]+y_last.iloc[i])/2 + 0.1*np.random.random()-0.05
+'''
+print("{}/{}".format(k,p_test.shape[0]))
+
+
+mse = (np.sqrt((p_test - y_test)**2)).sum()/p_test.shape[0]
+
+compare_mse = (np.sqrt((y_last - y_test)**2)).sum()/p_test.shape[0]
+
+print("Test mse is: {}\tCompareson mse is: {}".format(mse,compare_mse))
+
+file_name = "lightgbm_{}_{}".format(datetime.now().strftime('%Y%m%d_%H%M%S'), int(100000*mse))
+
+print("Save model")
+clf.save_model('../model/'+file_name+'.model')
+
+print("Generate data")
+output = pd.DataFrame({'goods_id': x_test.goods_id,'channel_id':x_test.channel_id,'year':x_test.year,
+            'weeknum':x_test.weeknum,'thisweek':x_test.value,'real':y_test,'prediction': p_test})
+
+print("Save result as: "+file_name+'.result')
+output.to_csv('../result/'+file_name+'.result', index=False, float_format='%.4f')
