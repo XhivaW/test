@@ -44,9 +44,12 @@ with tf.variable_scope("generator"):
     t2 = tf.get_variable("biases", shape=[52])
 
 wtf = discriminater_conv(protype,kernel)
+#init = tf.global_variables_initializer()
 
 with tf.Session(config=config) as sess:
-    sess.run(tf.global_variables_initializer())
+    init = tf.global_variables_initializer()
+    sess.run(init)
+    #sess.run(tf.global_variables_initializer())
     sess.run(tf.shape(t1))
     sess.run(tf.shape(t2))
-    sess.run(wtf)
+    sess.run(tf.shape(wtf))
