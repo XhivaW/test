@@ -35,7 +35,7 @@ class GanModel():
         # clip
         # Why we need this???
         # Why we limit from -0.01 to 0.01 here??
-        self.clip_real = [var.assign(tf.clip_by_value(var, -0.01, 0.01)) for var in get_var_list("discriminater")]
+        self.clip_d = [var.assign(tf.clip_by_value(var, -0.01, 0.01)) for var in get_var_list("discriminater")]
 
         # GPU config ans session
         config = tf.ConfigProto()
@@ -110,11 +110,37 @@ class GanModel():
         return optim.apply_gradients(gradient)
 '''
 
-    def train(self, real_folder, training_epoches=20000, batch_size=75):
+    def train(self, real_folder, training_epoches=20000):
         i = 0
         self.sess.run(tf.global_variables_initializer())
 
         for epoch in xrange(training_epoches):
             n_d = 100 if epoch<25 or (epoch+1)%500 == 0 else 5
-            for j in xrange(n_d):
-                real_batch, real_label = get_next_batch(j, self.data)
+            for _ in xrange(n_d):
+                real_batch, real_label = self.data.get_next_batch()
+                self.sess.run(self.clip_d)
+                self.sess.run(self.d_solver,
+                    feed_dict={self.x: real_batch, 
+                                self.y: real_label, 
+                                self.z: generate_z()})
+
+            self.sess.run(
+                self.g_solver, 
+                feed_dict={self.z: generate_z()})
+
+            if epoch % 100 == 0 or epoch < 100:
+                d_loss_curr = self.sess.run(self.d_loss, 
+                        feed_dict={self.x: real_batch, 
+                                    self.y: real_label,
+                                    self.z: generate_z()})
+
+                g_loss_curr = self.sess.run(self.g_loss, 
+                        feed_dict={self.z: generate_z()})
+
+                print('Current epoch: {}\n\tD loss: {:.4}, G loss: {:.4}'.format(epoch, d_loss_curr, g_loss_curr))
+
+                if epoch % 1500 == 0:
+                    samples = self.sess.run(self.fake_image, 
+                                feed_dict={self.z: generate_z()})
+
+                    

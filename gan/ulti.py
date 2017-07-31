@@ -8,14 +8,39 @@ from PIL import Image
 import urllib
 import cStringIO
 
-def get_real_input(real_folder):
-    real_data = []
-    for image_file in os.listdir(real_folder):
-        if image_file.endswith('.jpg'):
-            real_data.append(os.path.join(real_folder, image_file))
-    random.shuffle(real_data)
-    return real_data
 
+class real_data(real_folder='./real_data/', batch_size=75):
+    def __init__(self, real_folder, batch_size):
+        self.path = real_folder
+        self.counter = 0
+        self.batch_size = batch_size
+        self.limit = self.data.shape[0]
+        self.data = get_real_input(self.path)
+
+
+    def get_next_batch(self):
+        next_batch = []
+        if (self.counter+self.batch_size)>=self.limit:
+            self.counter -= self.limit
+            random.shuffle(self.data)
+        images = data[self.counter:self.pointer+self.batch_size]
+        for i in images:
+            img = Image.open(i).convert('L')
+            img = np.asarray(img, dtype=np.float32).reshape([100,30,1])
+            real_batch.append(img)
+        self.pointer += self.batch_size
+        return (np.asarray(real_batch), np.asarray([[0,1]]*batch_size))
+
+
+    def get_real_input(self):
+        real_data = []
+        for image_file in os.listdir(self.path):
+            if image_file.endswith('.jpg'):
+                real_data.append(os.path.join(self.path, image_file))
+        random.shuffle(real_data)
+        return np.asarray(real_data)
+
+'''
 def get_next_batch(pointer, batch_size=75, data=real_data):
     real_batch = []
     images = data[pointer*batch_size:(pointer+1)*batch_size]
@@ -33,6 +58,7 @@ def get_next_batch_from_net(batch_size=75, url='http://pin.aliyun.com//get_img?s
         img = np.asarray(img, dtype=np.float32).reshape([100,30,1])
         real_batch.append(img)
     return (np.asarray(real_batch), np.asarray([0,1]*batch_size))
+'''
 
 def generate_z(batch_size=75, z_dim=20):
     return np.random.uniform(-1.,1.,size=[batch_size, z_dim])
