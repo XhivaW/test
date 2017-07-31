@@ -6,6 +6,9 @@ import pandas as pd
 import numpy as np 
 from datetime import datetime
 
+# remove scientific notation
+#np.set_printoptions(suppress=True)
+
 #train_prob = 0.95
 
 
@@ -32,13 +35,13 @@ class network():
     def __call__(self, z):
         with tf.variable_scope(self.name) as vs:
             g = tfcl.fully_connected(z, 150, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
-            g = tfcl.fully_connected(g, 300, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
-            g = tfcl.fully_connected(g, 600, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
-            g = tfcl.fully_connected(g, 200, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
-            g = tfcl.fully_connected(g, 50, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
-            g = tfcl.fully_connected(g, 10, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
-            g = tfcl.fully_connected(g, 5, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
-            g = tfcl.fully_connected(g, 1, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
+            #g = tfcl.fully_connected(g, 300, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
+            #g = tfcl.fully_connected(g, 600, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
+            g = tfcl.fully_connected(g, 200, activation_fn=tf.nn.tanh)
+            g = tfcl.fully_connected(g, 50, activation_fn=tf.nn.tanh, normalizer_fn=tfcl.batch_norm)
+            g = tfcl.fully_connected(g, 10, activation_fn=tf.nn.tanh, normalizer_fn=tfcl.batch_norm)
+            g = tfcl.fully_connected(g, 5, activation_fn=tf.nn.tanh, normalizer_fn=tfcl.batch_norm)
+            g = tfcl.fully_connected(g, 1, activation_fn=None)
             return g
 
     @property
@@ -50,18 +53,20 @@ class tfnn():
     def __init__(self, network, data):
         self.network = network
         self.data = data
-        self.train_prob = 0.95
+        self.test_prob = 0.05
 
-        self.x = tf.placeholder(tf.float32,shape=[None,30])
-        self.y = tf.placeholder(tf.float32,shape=[None,1])
+        self.x = tf.placeholder(tf.float32,shape=[None,29])
+        self.y = tf.placeholder(tf.float32,shape=[None])
         # nets
         self._y = self.network(self.x)
 
         # loss
-        self.loss, _ = tf.metrics.mean_squared_error(self.y, self._y)
+        #self.loss, _ = tf.metrics.mean_squared_error(self.y, self._y)
+        #self.loss = tf.reduce_mean(tf.reduce_mean(tf.square(self.y - self._y), axis=1), axis=0)
+        self.loss = tf.nn.l2_loss(self.y - self._y)
 
-        self.solver = tf.train.AdamOptimizer().minimize(self.loss, var_list=self.network.vars)
-        #self.solver = tf.train.AdamOptimizer().minimize(self.loss)
+        self.solver = tf.train.GradientDescentOptimizer(0.001).minimize(self.loss, var_list=self.network.vars)
+        #self.solver = tf.train.AdamOptimizer().minimize(self.loss, var_list=self.network.vars)
 
         self.config = tf.ConfigProto()
         self.config.gpu_options.allocator_type = 'BFC'
@@ -71,23 +76,24 @@ class tfnn():
         self.saver = tf.train.Saver()
         self.result_path = '../result/nn_'
 
-    def train(self, epoches=5, batch_size=74):
+    def train(self, epoches=30, batch_size=266):
         self.sess.run(tf.global_variables_initializer())
 
         for epoch in xrange(epoches):
-            self.data = self.data.sample(frac=1).reset_index(drop=True)
-            train_idx = int(train_df.shape[0]*self.train_prob)
-            x_train = np.asarray(train_df.drop(['target'], axis=1).loc[:train_idx])
-            y_train = np.asarray(train_df.target.loc[:train_idx])
-            x_test = np.asarray(train_df.drop(['target'], axis=1).loc[train_idx:])
-            y_test = np.asarray(train_df.target.loc[train_idx:])
+            train_df = self.data.sample(frac=1).reset_index(drop=True)
+            test_idx = int(train_df.shape[0]*self.test_prob)
+            test_idx = 1000 if test_idx>1000 else test_idx
+            x_train = np.asarray(train_df.drop(['target'], axis=1).loc[test_idx:])
+            y_train = np.asarray(train_df.target.loc[test_idx:])
+            x_test = np.asarray(train_df.drop(['target'], axis=1).loc[:test_idx])
+            y_test = np.asarray(train_df.target.loc[:test_idx])
             batch_num = x_train.shape[0] // batch_size
             for i in xrange(batch_num):
                 self.sess.run(self.solver,
                                 feed_dict={
                                     self.x : x_train[i*batch_size:(i+1)*batch_size-10,],
                                     self.y : y_train[i*batch_size:(i+1)*batch_size-10,]})
-                if i % 500 ==0:
+                if i % 100 ==0:
                     train_loss = self.sess.run(self.loss, 
                                             feed_dict={
                                                 self.x : x_train[i*batch_size:(i+1)*batch_size-10,],
@@ -112,13 +118,14 @@ class tfnn():
                                     feed_dict={
                                     self.x : x_test})
 
-            goods_id = x_test[:,0]
-            channel_id = x_test[:,1]
-            name = self.result_path+datetime.now().strftime('%Y%m%d_%H%M%S')+'.result'
-            print('Save result as: '+name)
-            with open(name,'aw') as f:
-                for j in xrange(len(y_test)):
-                    f.write(str(goods_id[j])+'\t'+str(channel_id[j])+'\t'+prediction[j]+'\t'+y_test[j]+'\n')
+            if (epoch+1) % 5 == 0:
+                goods_id = x_test[:,0].astype(np.int64)
+                channel_id = x_test[:,1].astype(np.int64)
+                name = self.result_path+datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+str(int(test_loss*10000))+'.result'
+                print('Save result as: '+name)
+                with open(name,'aw') as f:
+                    for j in xrange(len(y_test)):
+                        f.write(str(goods_id[j])+','+str(channel_id[j])+','+str(prediction[j][0])+','+str(y_test[j])+'\n')
 
 
 if __name__=='__main__':
