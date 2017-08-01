@@ -8,28 +8,27 @@ from PIL import Image
 import urllib
 import cStringIO
 
-
-class real_data(real_folder='./real_data/', batch_size=128):
-    def __init__(self, real_folder, batch_size):
+class real_data():
+    def __init__(self, real_folder='./real_data/', batch_size=128):
         self.path = real_folder
         self.counter = 0
         self.batch_size = batch_size
+        self.data = self.get_real_input()
         self.limit = self.data.shape[0]
-        self.data = get_real_input(self.path)
 
 
     def get_next_batch(self):
-        next_batch = []
+        real_batch = []
         if (self.counter+self.batch_size)>=self.limit:
-            self.counter -= self.limit
+            self.counter = 0
             random.shuffle(self.data)
-        images = data[self.counter:self.pointer+self.batch_size]
+        images = self.data[self.counter:self.counter+self.batch_size]
         for i in images:
             img = Image.open(i).convert('L')
             img = np.asarray(img, dtype=np.float32).reshape([100,30,1])
             real_batch.append(img)
-        self.pointer += self.batch_size
-        return (np.asarray(real_batch), np.asarray([[0,1]]*batch_size))
+        self.counter += self.batch_size
+        return (np.asarray(real_batch), np.asarray([[0,1]]*self.batch_size))
 
 
     def get_real_input(self):
@@ -42,7 +41,8 @@ class real_data(real_folder='./real_data/', batch_size=128):
 
 
     def data2pic(self, sample):
-        return Image.fromarray(sample)
+        sample = sample.reshape([30,100])
+        return Image.fromarray(sample, mode='L')
 
 
 '''
