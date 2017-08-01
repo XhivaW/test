@@ -120,14 +120,12 @@ class GanModel():
 
         if self.load_model:
             ckpt = tf.train.get_checkpoint_state('./saved_model/')
-            print("Load previous model from {}".format(ckpt.model_checkpoint_path))
+            step = int(ckpt.model_checkpoint_path.split('-')[-1])
+            print("Load previous model from {}.\nStart iteration from {}.".format(ckpt.model_checkpoint_path, step))
             self.saver.restore(self.sess, ckpt.model_checkpoint_path)
 
         while True:
-            if self.load_model:
-                n_d = 100 if (step+1)%500 == 0 else 5
-            else:
-                n_d = 100 if step<25 or (step+1)%500 == 0 else 5
+            n_d = 100 if step<25 or (step+1)%500 == 0 else 5
             for _ in xrange(n_d):
                 real_batch, real_label = self.data.get_next_batch()
                 self.sess.run(self.clip_d)
@@ -141,7 +139,7 @@ class GanModel():
                 feed_dict={self.real_label: real_label, 
                             self.z: generate_z()})
 
-            if step % 50 == 0 or (step < 100 and not self.load_model):
+            if step % 50 == 0 or (step < 100):
                 d_loss_curr = self.sess.run(tf.reduce_mean(self.d_loss), 
                         feed_dict={self.x: real_batch, 
                                     self.real_label: real_label,
@@ -162,8 +160,8 @@ class GanModel():
 
                     #print '\n',type(sample), sample.shape,'\n'
                     pic = self.data.data2pic(sample)   
-                    print("Generate fake sample to ./fake_sample/{}_step_{}_time_{}.jpg".format(i, step, time))
-                    pic.save("./fake_sample/{}_step_{}_time_{}.jpg".format(i, step, time))
+                    print("Generate fake sample to ./fake_sample/time_{}_{}_step_{}.jpg".format(time, i, step))
+                    pic.save("./fake_sample/time_{}_{}_step_{}.jpg".format(time, i, step))
                     i += 1
 
 
