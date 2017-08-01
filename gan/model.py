@@ -4,6 +4,8 @@ import tensorflow.contrib as tfc
 import tensorflow.contrib.layers as tfcl
 import pandas as pd 
 import numpy as np 
+from datetime import datetime
+from PIL import Image
 from ulti import *
 
 class GanModel():
@@ -43,6 +45,8 @@ class GanModel():
         config.gpu_options.allow_growth=True
 
         self.sess = tf.Session(config=config)
+
+        self.saver = tf.train.Saver()
 
 
     def get_var_list(self, scope_name):
@@ -99,7 +103,7 @@ class GanModel():
             #result = tfcl.fully_connected(result, 256, activation_fn=tf.tanh, normalizer_fn=tfcl.batch_norm)
             result = tfcl.fully_connected(result, 128, activation_fn=tf.nn.tanh)
             result = tfcl.fully_connected(result, 16, activation_fn=tf.nn.tanh)
-            result = tfcl.fully_connected(result, 2, activation_fn=tf.nn.softmax)
+            result = tfcl.fully_connected(result, 2, activation_fn=None)
             return result
 
 '''
@@ -110,18 +114,19 @@ class GanModel():
         return optim.apply_gradients(gradient)
 '''
 
-    def train(self, real_folder, training_epoches=20000):
+    def train(self):
         i = 0
+        epoch = 0
         self.sess.run(tf.global_variables_initializer())
 
-        for epoch in xrange(training_epoches):
+        while True:
             n_d = 100 if epoch<25 or (epoch+1)%500 == 0 else 5
             for _ in xrange(n_d):
                 real_batch, real_label = self.data.get_next_batch()
                 self.sess.run(self.clip_d)
                 self.sess.run(self.d_solver,
                     feed_dict={self.x: real_batch, 
-                                self.y: real_label, 
+                                self.real_label: real_label, 
                                 self.z: generate_z()})
 
             self.sess.run(
@@ -131,7 +136,7 @@ class GanModel():
             if epoch % 100 == 0 or epoch < 100:
                 d_loss_curr = self.sess.run(self.d_loss, 
                         feed_dict={self.x: real_batch, 
-                                    self.y: real_label,
+                                    self.real_label: real_label,
                                     self.z: generate_z()})
 
                 g_loss_curr = self.sess.run(self.g_loss, 
@@ -139,8 +144,29 @@ class GanModel():
 
                 print('Current epoch: {}\n\tD loss: {:.4}, G loss: {:.4}'.format(epoch, d_loss_curr, g_loss_curr))
 
-                if epoch % 1500 == 0:
-                    samples = self.sess.run(self.fake_image, 
-                                feed_dict={self.z: generate_z()})
+                if epoch % 500 == 0:
+                    sample = self.sess.run(self.fake_image, 
+                                feed_dict={self.z: generate_z(batch_size=1)})
 
-                    
+                    pic = self.data.data2pic(sample)
+                    pic.save("./fake_sample/{}_epoch_{}.jpg".format(str(i),epoch))
+                    i += 1
+
+
+                    if epoch % 1000 == 0:
+
+                        time = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+                        self.saver.save(self.sess, 
+                            './saved_model/gan_{}_{}.model'.format(epoch, time), 
+                            global_step=epoch)
+
+            epoch += 1
+
+
+if __name__ == '__main__':
+
+    data = real_data()
+
+    gan = GanModel(data)
+    gan.train()

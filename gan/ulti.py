@@ -9,7 +9,7 @@ import urllib
 import cStringIO
 
 
-class real_data(real_folder='./real_data/', batch_size=75):
+class real_data(real_folder='./real_data/', batch_size=128):
     def __init__(self, real_folder, batch_size):
         self.path = real_folder
         self.counter = 0
@@ -40,6 +40,11 @@ class real_data(real_folder='./real_data/', batch_size=75):
         random.shuffle(real_data)
         return np.asarray(real_data)
 
+
+    def data2pic(self, sample):
+        return Image.fromarray(sample)
+
+
 '''
 def get_next_batch(pointer, batch_size=75, data=real_data):
     real_batch = []
@@ -60,5 +65,5 @@ def get_next_batch_from_net(batch_size=75, url='http://pin.aliyun.com//get_img?s
     return (np.asarray(real_batch), np.asarray([0,1]*batch_size))
 '''
 
-def generate_z(batch_size=75, z_dim=20):
+def generate_z(batch_size=128, z_dim=20):
     return np.random.uniform(-1.,1.,size=[batch_size, z_dim])
