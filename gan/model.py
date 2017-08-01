@@ -32,14 +32,16 @@ class GanModel():
         self.g_loss = tf.nn.softmax_cross_entropy_with_logits(labels=self.real_label, logits=self.g_result)
         self.d_loss = tf.nn.softmax_cross_entropy_with_logits(labels=self.real_label, logits=self.d_result) - self.g_loss
 
-        self.g_solver = tf.train.AdamOptimizer().minimize(self.g_loss, var_list=self.get_var_list("generator"))
-        self.d_solver = tf.train.AdamOptimizer().minimize(self.d_loss, var_list=self.get_var_list("discriminater"))
+        #self.g_solver = tf.train.AdamOptimizer().minimize(self.g_loss, var_list=self.get_var_list("generator"))
+        #self.d_solver = tf.train.AdamOptimizer().minimize(self.d_loss, var_list=self.get_var_list("discriminater"))
+        self.g_solver = tf.train.RMSPropOptimizer(learning_rate=1e-4).minimize(self.g_loss, var_list=self.get_var_list("generator"))
+        self.d_solver = tf.train.RMSPropOptimizer(learning_rate=1e-4).minimize(self.d_loss, var_list=self.get_var_list("discriminater"))
 
 
         # clip
         # Why we need this???
         # Why we limit from -0.01 to 0.01 here??
-        self.clip_d = [var.assign(tf.clip_by_value(var, -0.01, 0.01)) for var in self.get_var_list("discriminater")]
+        self.clip_d = [var.assign(tf.clip_by_value(var, -0.05, 0.05)) for var in self.get_var_list("discriminater")]
 
         # GPU config ans session
         config = tf.ConfigProto()
@@ -54,7 +56,7 @@ class GanModel():
     def get_var_list(self, scope_name):
         return [var for var in tf.global_variables() if scope_name in var.name]
 
-    def lrelu(self, x, leak=0.05, name="lrelu"):
+    def lrelu(self, x, leak=0.1, name="lrelu"):
         with tf.variable_scope(name):
             f1 = 0.5 * (1 + leak)
             f2 = 0.5 * (1 - leak)
@@ -68,8 +70,8 @@ class GanModel():
                 kernel: convonlution kernel in shape [height, width, inchannel, outchannel]
         '''
         with tf.variable_scope("generator"):
-            result = tfcl.fully_connected(z,30, activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
-            result = tfcl.fully_connected(result,13*4, activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
+            result = tfcl.fully_connected(z,30, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
+            result = tfcl.fully_connected(result,13*4, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
             result = tf.reshape(result, tf.stack([tf.shape(result)[0],13,4,1]))
             result = tf.nn.conv2d_transpose(result, self.kernel_g, 
                     output_shape=[tf.shape(result)[0],25,8,1], 
@@ -107,9 +109,9 @@ class GanModel():
                     strides=[1,2,2,1],
                     padding="SAME")
             result = tf.reshape(result, tf.stack([tf.shape(result)[0],13*4]))
-            result = tfcl.fully_connected(result, 256, activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
-            result = tfcl.fully_connected(result, 128, activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
-            result = tfcl.fully_connected(result, 16, activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
+            result = tfcl.fully_connected(result, 256, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
+            result = tfcl.fully_connected(result, 128, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
+            result = tfcl.fully_connected(result, 16, activation_fn=tf.nn.relu, normalizer_fn=tfcl.batch_norm)
             result = tfcl.fully_connected(result, 2, activation_fn=None)
             return result
 
@@ -165,7 +167,7 @@ class GanModel():
                     i += 1
 
 
-                    if (step % 2000 == 0) and step > 500:
+                    if (step % 2000 == 0 and step > 0) or (step == 1000):
 
                         print("Save current model to ./saved_model/gan_{}_{}.model".format(step, time))
                         self.saver.save(self.sess, 
