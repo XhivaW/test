@@ -4,12 +4,14 @@ import tensorflow.contrib as tfc
 import tensorflow.contrib.layers as tfcl
 import pandas as pd 
 import numpy as np 
+import sys
 from datetime import datetime
 from PIL import Image
 from ulti import *
 
 class GanModel():
-    def __init__(self, data):
+    def __init__(self, data, load_model):
+        self.load_model = load_model
         self.data = data
         self.x = tf.placeholder(tf.float32, shape=[None,100,30,1])
         self.real_label = tf.placeholder(tf.float32, shape=[None,2])
@@ -116,8 +118,16 @@ class GanModel():
         step = 0
         self.sess.run(tf.global_variables_initializer())
 
+        if self.load_model:
+            ckpt = tf.train.get_checkpoint_state('./saved_model/')
+            print("Load previous model from {}".format(ckpt.model_checkpoint_path))
+            self.saver.restore(self.sess, ckpt.model_checkpoint_path)
+
         while True:
-            n_d = 100 if step<25 or (step+1)%500 == 0 else 5
+            if self.load_model:
+                n_d = 100 if (step+1)%500 == 0 else 5
+            else:
+                n_d = 100 if step<25 or (step+1)%500 == 0 else 5
             for _ in xrange(n_d):
                 real_batch, real_label = self.data.get_next_batch()
                 self.sess.run(self.clip_d)
@@ -131,7 +141,7 @@ class GanModel():
                 feed_dict={self.real_label: real_label, 
                             self.z: generate_z()})
 
-            if step % 50 == 0 or step < 100:
+            if step % 50 == 0 or (step < 100 and not self.load_model):
                 d_loss_curr = self.sess.run(tf.reduce_mean(self.d_loss), 
                         feed_dict={self.x: real_batch, 
                                     self.real_label: real_label,
@@ -144,19 +154,20 @@ class GanModel():
                 print('Current step: {}, D loss: {}, G loss: {}'.format(step, d_loss_curr, g_loss_curr))
 
                 if (step % 500 == 0) and step > 100:
+
+                    time = datetime.now().strftime('%Y%m%d_%H%M%S')
+
                     sample = self.sess.run(self.fake_image, 
                                 feed_dict={self.z: generate_z(batch_size=1)})
 
                     #print '\n',type(sample), sample.shape,'\n'
                     pic = self.data.data2pic(sample)   
-                    print("Generate fake sample to ./fake_sample/{}_step_{}.jpg".format(i,step))                 
-                    pic.save("./fake_sample/{}_step_{}.jpg".format(i,step))
+                    print("Generate fake sample to ./fake_sample/{}_step_{}_time_{}.jpg".format(i, step, time))
+                    pic.save("./fake_sample/{}_step_{}_time_{}.jpg".format(i, step, time))
                     i += 1
 
 
-                    if (step % 1000 == 0) and step > 500:
-
-                        time = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    if (step % 2000 == 0) and step > 500:
 
                         print("Save current model to ./saved_model/gan_{}_{}.model".format(step, time))
                         self.saver.save(self.sess, 
@@ -168,9 +179,10 @@ class GanModel():
 
 if __name__ == '__main__':
 
+    load_model = True if '-l' in sys.argv else False
     data = real_data()
 
-    gan = GanModel(data)
+    gan = GanModel(data, load_model)
     gan.train()
 
 
