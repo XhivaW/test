@@ -52,7 +52,7 @@ class GanModel():
         # Why we need this???
         # Why we limit from -0.01 to 0.01 here??
         # see [https://zhuanlan.zhihu.com/p/25071913]
-        self.clip_d = [var.assign(tf.clip_by_value(var, -0.01, 0.01)) for var in self.get_var_list("discriminater")]
+        self.clip_d = [var.assign(tf.clip_by_value(var, -0.02, 0.02)) for var in self.get_var_list("discriminater")]
 
         # GPU config ans session
         config = tf.ConfigProto()
@@ -165,11 +165,13 @@ class GanModel():
             result = self.deconv2d(result, [tf.shape(result)[0],100,30,1], 
                                     name="g_deconv_3", activation_fn=tf.tanh)
             '''
-            result = tfcl.fully_connected(z, 4*13*8, activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
+            #result = tfcl.fully_connected(z, 7*2*16, activation_fn=self.lrelu)
+            result = tfcl.fully_connected(z, 13*4*8, activation_fn=self.lrelu)
             result = tf.reshape(result, tf.stack([tf.shape(z)[0],4,13,8]))
-            result = self.deconv2d(result, output_size=4, normalizer_fn=tfcl.batch_norm)
-            result = self.deconv2d(result, output_size=2)
-            result = self.deconv2d(result)
+            #result = self.deconv2d(result, output_size=8)
+            result = self.deconv2d(result, activation_fn=self.lrelu, output_size=4)
+            result = self.deconv2d(result, activation_fn=self.lrelu, output_size=2)
+            result = self.deconv2d(result, activation_fn=tf.nn.tanh)
             return result
 
 
@@ -205,8 +207,11 @@ class GanModel():
             '''
             result = self.conv2d(z,output_size=2)
             result = self.conv2d(result,output_size=4)
-            result = self.conv2d(result,output_size=8, normalizer_fn=tfcl.batch_norm)
+            result = self.conv2d(result,output_size=8)
+            #result = self.conv2d(result,output_size=16)
+            #result = tf.reshape(result, tf.stack([tf.shape(z)[0],7*2*16]))
             result = tf.reshape(result, tf.stack([tf.shape(z)[0],13*4*8]))
+            result = tfcl.fully_connected(result, 60, activation_fn=self.lrelu, weights_initializer=tf.random_normal_initializer(0,0.02))
             result = tfcl.fully_connected(result, 1, activation_fn=None, weights_initializer=tf.random_normal_initializer(0,0.02))
             return result
 
@@ -225,7 +230,7 @@ class GanModel():
             if step<25 or (step+1)%500 == 0:
                 n_d = 100
             else:
-                n_d = 5
+                n_d = 2
             #n_d = 50 if step<25 or (step+1)%500 == 0 else 2
             for __ in xrange(n_d):
                 '''

@@ -29,8 +29,8 @@ class real_data():
             real_batch.append(img)
         self.counter += self.batch_size
         label = np.asarray([[0.,1.]]*self.batch_size)
-        label[:,0] += np.random.uniform(0,0.2)
-        label[:,1] += np.random.uniform(-0.2, 0.2)
+        label[:,0] += np.random.uniform(0,0.1)
+        label[:,1] += np.random.uniform(-0.1, 0.1)
         return (np.asarray(real_batch), label[:,1].reshape([self.batch_size,1]), label[:,0].reshape([self.batch_size,1]))
 
 
