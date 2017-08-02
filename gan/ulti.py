@@ -25,10 +25,13 @@ class real_data():
         images = self.data[self.counter:self.counter+self.batch_size]
         for i in images:
             img = Image.open(i).convert('L')
-            img = np.asarray(img, dtype=np.float32).reshape([100,30,1])
+            img = np.asarray(img, dtype=np.float32).reshape([30,100,1])/127.5 - 1.0
             real_batch.append(img)
         self.counter += self.batch_size
-        return (np.asarray(real_batch), np.asarray([[0,1]]*self.batch_size))
+        label = np.asarray([[0.,1.]]*self.batch_size)
+        label[:,0] += np.random.uniform(0,0.2)
+        label[:,1] += np.random.uniform(-0.2, 0.2)
+        return (np.asarray(real_batch), label[:,1].reshape([self.batch_size,1]), label[:,0].reshape([self.batch_size,1]))
 
 
     def get_real_input(self):
@@ -41,7 +44,9 @@ class real_data():
 
 
     def data2pic(self, sample):
-        sample = sample.reshape([30,100])
+        sample = (sample.reshape([sample.shape[1],sample.shape[2]]) + 1.0) * 127.5
+        sample[sample<0.0] = 0.0
+        sample[sample>255.0] = 255.0
         return Image.fromarray(sample, mode='L')
 
 
@@ -65,5 +70,8 @@ def get_next_batch_from_net(batch_size=75, url='http://pin.aliyun.com//get_img?s
     return (np.asarray(real_batch), np.asarray([0,1]*batch_size))
 '''
 
-def generate_z(batch_size=128, z_dim=20):
-    return np.random.uniform(-1.,1.,size=[batch_size, z_dim])
+def generate_z(batch_size=128, z_dim=100):
+    sample = np.random.normal(0.,1.0,size=[batch_size, z_dim])
+    #sample[sample>1.0] = 1.0
+    #sample[sample<-1.0] = -1.0
+    return sample
