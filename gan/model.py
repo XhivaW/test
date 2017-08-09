@@ -10,21 +10,23 @@ from PIL import Image
 from ulti import *
 
 class GanModel():
-    def __init__(self, data, load_model):
+    def __init__(self, data, load_model, input_size=[30,100]):
         self.load_model = load_model
         self.data = data
+        self.input_h = input_size[0]
+        self.input_w = input_size[1]
 
         self.output_w = 100
         self.output_h = 30
 
-        self.x = tf.placeholder(tf.float32, shape=[None,30,100,1])
+        self.x = tf.placeholder(tf.float32, shape=[None,self.input_h,self.input_w,1])
         #self.real_label = tf.placeholder(tf.float32, shape=[None,1])
         #self.fake_label = tf.placeholder(tf.float32, shape=[None,1])
         self.z = tf.placeholder(tf.float32, shape=[None,100])
-        with tf.variable_scope("generator"):
-            self.kernel_g = tf.get_variable("kernel_g", shape=[4,4,1,1])
-        with tf.variable_scope("discriminater"):
-            self.kernel_d = tf.get_variable("kernel_d", shape=[4,4,1,1])
+        #with tf.variable_scope("generator"):
+        #    self.kernel_g = tf.get_variable("kernel_g", shape=[(self.input_h//8),(self.input_h//8),1,1])
+        #with tf.variable_scope("discriminater"):
+        #    self.kernel_d = tf.get_variable("kernel_d", shape=[(self.input_h//8),(self.input_h//8),1,1])
 
         # nets
         self.fake_image = self.generator_deconv(self.z)
@@ -44,14 +46,14 @@ class GanModel():
 
         self.g_solver = tf.train.AdamOptimizer().minimize(self.g_loss, var_list=self.get_var_list("generator"))
         self.d_solver = tf.train.AdamOptimizer().minimize(self.d_loss, var_list=self.get_var_list("discriminater"))
-        #self.g_solver = tf.train.RMSPropOptimizer(learning_rate=1e-4).minimize(self.g_loss, var_list=self.get_var_list("generator"))
-        #self.d_solver = tf.train.RMSPropOptimizer(learning_rate=1e-4).minimize(self.d_loss, var_list=self.get_var_list("discriminater"))
+        #self.g_solver = tf.train.RMSPropOptimizer(learning_rate=1e-(self.input_h//8)).minimize(self.g_loss, var_list=self.get_var_list("generator"))
+        #self.d_solver = tf.train.RMSPropOptimizer(learning_rate=1e-(self.input_h//8)).minimize(self.d_loss, var_list=self.get_var_list("discriminater"))
 
 
         # clip
         # Why we need this???
         # Why we limit from -0.01 to 0.01 here??
-        # see [https://zhuanlan.zhihu.com/p/25071913]
+        # see [https://zhuanlan.zhihu.com/p/250719(self.input_w//8)]
         self.clip_d = [var.assign(tf.clip_by_value(var, -0.02, 0.02)) for var in self.get_var_list("discriminater")]
 
         # GPU config ans session
@@ -70,7 +72,7 @@ class GanModel():
     def lrelu(self, x, leak=0.2):
             return tf.maximum(x, leak*x)
     '''
-    def deconv2d(self, z, output_shape, activation_fn=tf.nn.relu, k_h=4, k_w=4, 
+    def deconv2d(self, z, output_shape, activation_fn=tf.nn.relu, k_h=(self.input_h//8), k_w=(self.input_h//8), 
                 name="deconv2d", strides=[1,2,2,1], 
                 padding="SAME", stddev=0.02):
         kernel = tf.get_variable(name+"_kernel", 
@@ -87,7 +89,7 @@ class GanModel():
         return deconv
     '''
 
-    def deconv2d(self, z, output_size=1, name="deconv2d", kernel_size=4, 
+    def deconv2d(self, z, output_size=1, name="deconv2d", kernel_size=(self.input_h//8), 
         stride=2, activation_fn=tf.nn.relu, padding="SAME", stddev=0.02, 
         normalizer_fn=None):
         deconv = tfcl.conv2d_transpose(z, output_size, kernel_size, stride=stride, 
@@ -96,7 +98,7 @@ class GanModel():
         return deconv
 
     '''
-    def conv2d(self, z, output_dim, activation_fn=None, k_h=4, k_w=4, 
+    def conv2d(self, z, output_dim, activation_fn=None, k_h=(self.input_h//8), k_w=(self.input_h//8), 
               name="conv2d", strides=[1,2,2,1], 
               padding="SAME", stddev=0.02):
         if activation_fn is None:
@@ -116,7 +118,7 @@ class GanModel():
         return conv
     '''
 
-    def conv2d(self, z, output_size=1, name="conv2d", kernel_size=4, 
+    def conv2d(self, z, output_size=1, name="conv2d", kernel_size=(self.input_h//8), 
         stride=2, activation_fn=None, padding="SAME", stddev=0.02, 
         normalizer_fn=None):
         if activation_fn is None:
@@ -138,8 +140,8 @@ class GanModel():
         with tf.variable_scope("generator"):
             '''
             #result = tfcl.fully_connected(z,30, activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
-            result = tfcl.fully_connected(z,13*4, activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
-            result = tf.reshape(result, tf.stack([tf.shape(result)[0],4,13,1]))
+            result = tfcl.fully_connected(z,(self.input_w//8)*(self.input_h//8), activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
+            result = tf.reshape(result, tf.stack([tf.shape(result)[0],(self.input_h//8),(self.input_w//8),1]))
             result = tf.nn.conv2d_transpose(result, self.kernel_g, 
                     output_shape=[tf.shape(result)[0],25,8,1], 
                     strides=[1,2,2,1], 
@@ -158,18 +160,18 @@ class GanModel():
             result = tfcl.fully_connected(result,100*30, activation_fn=tf.tanh, normalizer_fn=tfcl.batch_norm)
             result = tf.reshape(result, tf.stack([tf.shape(result)[0],100,30,1]))
             
-            result = tfcl.fully_connected(z, 13*4, activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
-            result = tf.reshape(result, tf.stack([tf.shape(result)[0],4,13,1]))
+            result = tfcl.fully_connected(z, (self.input_w//8)*(self.input_h//8), activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
+            result = tf.reshape(result, tf.stack([tf.shape(result)[0],(self.input_h//8),(self.input_w//8),1]))
             result = self.deconv2d(result, [tf.shape(result)[0],25,8,1], name="g_deconv_1")
             result = self.deconv2d(result, [tf.shape(result)[0],50,15,1], name="g_deconv_2")
             result = self.deconv2d(result, [tf.shape(result)[0],100,30,1], 
                                     name="g_deconv_3", activation_fn=tf.tanh)
             '''
             #result = tfcl.fully_connected(z, 7*2*16, activation_fn=self.lrelu)
-            result = tfcl.fully_connected(z, 13*4*8, activation_fn=self.lrelu)
-            result = tf.reshape(result, tf.stack([tf.shape(z)[0],4,13,8]))
+            result = tfcl.fully_connected(z, (self.input_w//8)*(self.input_h//8)*8, activation_fn=self.lrelu)
+            result = tf.reshape(result, tf.stack([tf.shape(z)[0],(self.input_w//8),(self.input_h//8),8]))
             #result = self.deconv2d(result, output_size=8)
-            result = self.deconv2d(result, activation_fn=self.lrelu, output_size=4)
+            result = self.deconv2d(result, activation_fn=self.lrelu, output_size=(self.input_h//8))
             result = self.deconv2d(result, activation_fn=self.lrelu, output_size=2)
             result = self.deconv2d(result, activation_fn=tf.nn.tanh)
             return result
@@ -195,7 +197,7 @@ class GanModel():
             result = tf.nn.conv2d(result, self.kernel_d, 
                     strides=[1,2,2,1],
                     padding="SAME")
-            result = tf.reshape(result, tf.stack([tf.shape(result)[0],13*4]))
+            result = tf.reshape(result, tf.stack([tf.shape(result)[0],(self.input_w//8)*(self.input_h//8)]))
             #result = tfcl.fully_connected(result, 256, activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
             result = tfcl.fully_connected(result, 128, activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
             result = tfcl.fully_connected(result, 16, activation_fn=self.lrelu, normalizer_fn=tfcl.batch_norm)
@@ -206,11 +208,11 @@ class GanModel():
             result = self.conv2d(result, 1, name="d_conv_3")
             '''
             result = self.conv2d(z,output_size=2)
-            result = self.conv2d(result,output_size=4)
+            result = self.conv2d(result,output_size=(self.input_h//8))
             result = self.conv2d(result,output_size=8)
             #result = self.conv2d(result,output_size=16)
             #result = tf.reshape(result, tf.stack([tf.shape(z)[0],7*2*16]))
-            result = tf.reshape(result, tf.stack([tf.shape(z)[0],13*4*8]))
+            result = tf.reshape(result, tf.stack([tf.shape(z)[0],(self.input_w//8)*(self.input_h//8)*8]))
             result = tfcl.fully_connected(result, 60, activation_fn=self.lrelu, weights_initializer=tf.random_normal_initializer(0,0.02))
             result = tfcl.fully_connected(result, 1, activation_fn=None, weights_initializer=tf.random_normal_initializer(0,0.02))
             return result
