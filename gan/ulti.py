@@ -8,6 +8,45 @@ from PIL import Image
 import urllib
 import cStringIO
 
+class mnist_data():
+    def __init__(self, mnist_folder='./mnist/', batch_size=64):
+        self.path = mnist_folder
+        self.counter = 0
+        self.batch_size = batch_size
+        self.data, self.label = self.get_mnist_input()
+        self.limit = self.data.shape[0]
+
+    def get_mnist_input(self):
+        x = np.load(self.path+'all_x.npy').astype(np.float32)
+        y = np.load(self.path+'all_y.npy').astype(np.float32)
+        return x, y
+
+    def get_next_batch(self):
+        next_batch = []
+        while (self.counter+self.batch_size)>=self.limit:
+            self.counter = np.random.randint(self.limit)
+        tmp = self.data[self.counter:self.counter+self.batch_size]
+        label = self.label[self.counter:self.counter+self.batch_size]
+        for i in tmp:
+            i = i.reshape([28,28,1])/127.5 - 1.0
+            next_batch.append(i)
+        self.counter += self.batch_size
+        return (np.array(next_batch), np.array(label), 0)
+
+    def data2pic(self, sample):
+        sample = (sample.reshape([sample.shape[1],sample.shape[2]]) + 1.0) * 127.5
+        sample[sample<0.0] = 0.0
+        sample[sample>255.0] = 255.0
+        return Image.fromarray(sample, mode='L')
+
+    def generate_z(self, z_dim=100):
+        sample = np.random.normal(0.,1.0,size=[self.batch_size, z_dim])
+        #sample[sample>1.0] = 1.0
+        #sample[sample<-1.0] = -1.0
+        return sample
+
+
+
 class real_data():
     def __init__(self, real_folder='./real_data/', batch_size=128):
         self.path = real_folder
@@ -49,6 +88,12 @@ class real_data():
         sample[sample>255.0] = 255.0
         return Image.fromarray(sample, mode='L')
 
+    def generate_z(self, z_dim=100):
+        sample = np.random.normal(0.,1.0,size=[self.batch_size, z_dim])
+        #sample[sample>1.0] = 1.0
+        #sample[sample<-1.0] = -1.0
+        return sample
+
 
 '''
 def get_next_batch(pointer, batch_size=75, data=real_data):
@@ -69,9 +114,3 @@ def get_next_batch_from_net(batch_size=75, url='http://pin.aliyun.com//get_img?s
         real_batch.append(img)
     return (np.asarray(real_batch), np.asarray([0,1]*batch_size))
 '''
-
-def generate_z(batch_size=128, z_dim=100):
-    sample = np.random.normal(0.,1.0,size=[batch_size, z_dim])
-    #sample[sample>1.0] = 1.0
-    #sample[sample<-1.0] = -1.0
-    return sample
